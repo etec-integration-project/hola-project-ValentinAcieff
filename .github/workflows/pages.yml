@@ -1,0 +1,88 @@
+name: Deploy Hola-Project Documentation
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  
+  workflow_dispatch:      
+  push:
+    branches: [ "main" ]  
+  issues:
+    types: [opened, closed, edited, deleted]
+  milestone:
+    types: [created, closed, edited, deleted]
+
+permissions:
+  contents: write    
+  pages: write      
+  id-token: write   
+  issues: read          
+  pull-requests: write  
+  repository-projects: write
+  actions: read         
+  deployments: write    
+  statuses: write       
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  build:
+    name: Build Hola-Project Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install markdown2 jinja2 requests
+
+      - name: Fetch Issues and Milestones
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/fetch_github_data.py
+
+      - name: Generate Documentation
+        run: |
+          python scripts/generate_docs.py
+
+      - name: Generate Wiki
+        env:
+          GITHUB_TOKEN: ${{ secrets.WIKI_TOKEN }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          python scripts/generate_wiki.py
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+        
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./_site
+      
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
+      
+  deploy:
+    name: Deploy Hola-Project Documentation
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy Documentation to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
